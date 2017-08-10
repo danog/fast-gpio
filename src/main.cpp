@@ -1,4 +1,5 @@
 #include <main.h>
+#include <climits>
 
 void initGpioSetup (gpioSetup* obj)
 {
@@ -91,7 +92,7 @@ int parseArguments(const char* progName, int argc, char* argv[], gpioSetup *setu
 		strcpy(setup->cmdString, FASTGPIO_CMD_STRING_PULSES);
 		// get the path to the pulses file and repeat number
 		setup->pathPulsesFile = argv[2];
-		setup->repeats = atoi(argv[3]);
+		setup->sampleFrequency = atoi(argv[3]);
 	}
 
 	else if (strncmp(argv[0], "pwm", strlen("pwm") ) == 0 )	{
@@ -286,23 +287,23 @@ int pulseGpio(FastGpio *gpioObj,int pinNum, char* pathToFile, int repeats)
 {
 	gpioObj->SetDirection(pinNum,1);
 
-	FILE * pFile;
-	pFile = fopen (pathToFile,"r");
-	// Max code size is 200 
-	int* upTimes = new int[200];
-	int* downTimes = new int[200];
-	int* pUpTimes = upTimes;
-	int* pDownTimes = downTimes;
+	FILE * pFile = fopen (pathToFile,"r");
+	short *sdata;
+	bool data;
+	bool olddata = 0;
 
 	// Load data from the file
 	if (pFile != NULL)
 	{
-		int i = 0;
 
-		while ((fscanf(pFile, "%d,%d\n", pUpTimes,pDownTimes) != EOF) && (i++ < 200))
+		while (fread(sdata, sizeof(short), 1, pFile) == 1*sizeof(short))
 		{
-			pUpTimes++;
-			pDownTimes++;
+			data = abs(*sdata)/SHRT_MAX;
+			if (data != olddata) {
+				gpioObj->Set(pinNum, data);
+			}
+			olddata = data;
+
 		}
 		fclose (pFile);
 	}
@@ -311,24 +312,6 @@ int pulseGpio(FastGpio *gpioObj,int pinNum, char* pathToFile, int repeats)
 		printf("Error opening the file\n");
 		return 1;
 	}
-
-	// Play the code 
-	while (repeats-- > 0)
-	{
-		pUpTimes = upTimes;
-		pDownTimes = downTimes;
-		while (*pUpTimes != 0)
-		{
-			// printf("Pulsing Up Time: %d, Down Time: %d\n",*pUpTimes,*pDownTimes);
-			pulse(gpioObj,pinNum,*pUpTimes,*pDownTimes);
-
-			pUpTimes++;
-			pDownTimes++;
-		}
-	}
-
-	delete[] upTimes;
-	delete[] downTimes;
 
 
 }

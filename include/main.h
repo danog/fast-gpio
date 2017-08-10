@@ -65,6 +65,7 @@ struct gpioSetup {
 
 	// pulses options
 	char*   pathPulsesFile;
+	int     sampleFrequency;
 	int     repeats;
 
 	// general options
