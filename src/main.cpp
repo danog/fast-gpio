@@ -25,7 +25,7 @@ void usage(const char* progName) {
 	printf("\t%s read <gpio>\n", progName);
 	printf("\t%s set <gpio> <value: 0 or 1>\n", progName);
 	printf("\t%s pwm <gpio> <freq in Hz> <duty cycle percentage>\n", progName);
-	printf("\t%s pulses <gpio> <path_pulses_file> <repeats>\n",progName);
+	printf("\t%s pulses <gpio> <path_pulses_file> <sampleRate>\n",progName);
 	printf("\n");
 }
 
@@ -160,7 +160,7 @@ int gpioRun(gpioSetup* setup)
 			strcpy(valString, (setup->pinDir == 1 ? "output" : "input") );
 			break;
 		case GPIO_CMD_PULSES:
-			pulseGpio(gpioObj,setup->pinNumber,setup->pathPulsesFile,setup->repeats);
+			pulseGpio(gpioObj,setup->pinNumber,setup->pathPulsesFile,setup->sampleFrequency);
 			break;
 
 		default:
@@ -283,27 +283,44 @@ void pulse(FastGpio *gpioObj,int pinNum,int highMicros, int lowMicros)
 }
 
 
-int pulseGpio(FastGpio *gpioObj,int pinNum, char* pathToFile, int repeats)
+int pulseGpio(FastGpio *gpioObj,int pinNum, char* pathToFile, int sampleFrequency)
 {
 	gpioObj->SetDirection(pinNum,1);
+        int period = 1000000000/sampleFrequency;
+	printf("Sample period (nsec): %i", period);
+
+	struct timespec ts;
+	struct timespec rts;
+	struct timespec newts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	FILE * pFile = fopen (pathToFile,"r");
-	short *sdata;
+	short *sdata = (short*) malloc(sizeof(short));
 	bool data;
+	int read;
 	bool olddata = 0;
 
 	// Load data from the file
 	if (pFile != NULL)
 	{
-
-		while (fread(sdata, sizeof(short), 1, pFile) == 1*sizeof(short))
+		while ((read = fread(sdata, sizeof(short), 1, pFile)) == 1)
 		{
-			data = abs(*sdata)/SHRT_MAX;
+			data = abs(*sdata)/(SHRT_MAX/2);
 			if (data != olddata) {
-				gpioObj->Set(pinNum, data);
+				//printf("CHANGING to %i", (int) data);
+				gpioObj->Set(pinNum, (int) data);
 			}
 			olddata = data;
 
+			clock_gettime(CLOCK_MONOTONIC, &newts);
+			rts.tv_sec = newts.tv_sec - ts.tv_sec;
+			rts.tv_nsec = newts.tv_nsec - ts.tv_nsec;
+			clock_gettime(CLOCK_MONOTONIC, &ts);
+			if (rts.tv_sec > 0 || rts.tv_nsec > period) {
+				//printf("I'm late by %i seconds and %i nanoseconds!\n", rts.tv_sec, rts.tv_nsec);
+			} else {
+				usleep((period - rts.tv_nsec)/1000);
+			}
 		}
 		fclose (pFile);
 	}
